@@ -77,11 +77,13 @@ func (server *TCPChatServer) accept(conn net.Conn) *client {
 	writer := bufio.NewWriter(conn)
 	client := &client{Writer: writer}
 
-	conn.Write([]byte("Enter your name: "))
-	name, _ := bufio.NewReader(conn).ReadString('\n')
-	name = strings.TrimSpace(name)
-	if len(name) == 0 {
-		name = fmt.Sprintf("Unknown user %v", len(server.clients)+1)
+	for client.Name == "" {
+		conn.Write([]byte("Enter your name: "))
+		name, _ := bufio.NewReader(conn).ReadString('\n')
+		name = strings.TrimSpace(name)
+		if name != "" {
+			client.Name = name
+		}
 	}
 	client.Name = name
 	return client
