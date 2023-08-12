@@ -10,6 +10,24 @@ import (
 	"time"
 )
 
+var logo = "Welcome to TCP-Chat!\n" +
+	"         _nnnn_\n" +
+	"        dGGGGMMb\n" +
+	"       @p~qp~~qMb\n" +
+	"       M|@||@) M|\n" +
+	"       @,----.JM|\n" +
+	"      JS^\\__/  qKL\n" +
+	"     dZP        qKRb\n" +
+	"    dZP          qKKb\n" +
+	"   fZP            SMMb\n" +
+	"   HZM            MMMM\n" +
+	"   FqM            MMMM\n" +
+	" __| \".        |\\dS\"qML\n" +
+	" |    \".       | `' \\Zq\n" +
+	"_)      \\.___.,|     .'\n" +
+	"\\____   )MMMMMP|   .'\n" +
+	"     `-'       `--'\n"
+
 type TCPChatServer struct {
 	listener          net.Listener
 	clients           map[net.Conn]*client
@@ -17,6 +35,7 @@ type TCPChatServer struct {
 	rwmutex           *sync.RWMutex
 	mutex             *sync.Mutex
 	activeConnections int
+	usedNames         map[string]bool
 }
 
 type client struct {
@@ -26,9 +45,10 @@ type client struct {
 
 func NewServer() *TCPChatServer {
 	return &TCPChatServer{
-		clients: make(map[net.Conn]*client),
-		rwmutex: &sync.RWMutex{},
-		mutex:   &sync.Mutex{},
+		clients:   make(map[net.Conn]*client),
+		usedNames: make(map[string]bool),
+		rwmutex:   &sync.RWMutex{},
+		mutex:     &sync.Mutex{},
 	}
 }
 
@@ -76,16 +96,22 @@ func (server *TCPChatServer) broadcast(message string) {
 func (server *TCPChatServer) accept(conn net.Conn) *client {
 	writer := bufio.NewWriter(conn)
 	client := &client{Writer: writer}
-
-	for client.Name == "" {
+	for {
 		conn.Write([]byte("Enter your name: "))
 		name, _ := bufio.NewReader(conn).ReadString('\n')
 		name = strings.TrimSpace(name)
 		if name != "" {
-			client.Name = name
+			if !server.isNameUsed(name) {
+				client.Name = name
+				server.markNameAsUsed(name)
+				break
+			} else {
+				conn.Write([]byte("Please, provide a unique name\n"))
+			}
+		} else {
+			conn.Write([]byte("Please, provide non-empty name\n"))
 		}
 	}
-	client.Name = name
 	return client
 }
 
@@ -104,9 +130,13 @@ func (server *TCPChatServer) uploadHistory(client *client) {
 	}
 }
 
+func (server *TCPChatServer) welcome(conn net.Conn) {
+	conn.Write([]byte(logo))
+}
+
 func (server *TCPChatServer) handleRequest(conn net.Conn) {
 	defer conn.Close()
-
+	server.welcome(conn)
 	client := server.accept(conn)
 	server.broadcast(fmt.Sprintf("[Server] %s joined the chat", client.Name))
 
@@ -145,4 +175,16 @@ func (server *TCPChatServer) sendMessage(conn net.Conn) {
 			server.rwmutex.Unlock()
 		}
 	}
+}
+
+func (server *TCPChatServer) isNameUsed(name string) bool {
+	server.rwmutex.RLock()
+	defer server.rwmutex.RUnlock()
+	return server.usedNames[name]
+}
+
+func (server *TCPChatServer) markNameAsUsed(name string) {
+	server.rwmutex.Lock()
+	defer server.rwmutex.Unlock()
+	server.usedNames[name] = true
 }
